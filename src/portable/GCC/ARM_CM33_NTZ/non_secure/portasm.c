@@ -240,7 +240,7 @@ uint32_t ulSetInterruptMask( void ) /* __attribute__(( naked )) PRIVILEGED_FUNCT
         "                                                   \n"
         "   mrs r0, basepri                                 \n" /* r0 = basepri. Return original basepri value. */
         "   mov r1, %0                                      \n" /* r1 = configMAX_SYSCALL_INTERRUPT_PRIORITY. */
-        "   msr basepri, r1                                 \n" /* Disable interrupts up to configMAX_SYSCALL_INTERRUPT_PRIORITY. */
+        "   msr basepri_max, r1                             \n" /* Disable interrupts up to configMAX_SYSCALL_INTERRUPT_PRIORITY. A stricter mask that is in force already stays. */
         "   dsb                                             \n"
         "   isb                                             \n"
         "   bx lr                                           \n" /* Return. */

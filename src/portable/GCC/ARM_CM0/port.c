@@ -368,6 +368,13 @@ portDONT_DISCARD void vPortSVCHandler_C( uint32_t * pulCallerStackAddress ) PRIV
  */
 PRIVILEGED_DATA static volatile uint32_t ulCriticalNesting = 0xaaaaaaaaUL;
 
+/**
+ * @brief The PRIMASK that the outermost critical section found when it was
+ * entered. Its exit restores this value instead of enabling the interrupts, so
+ * a caller that disabled them itself still has them disabled afterwards.
+ */
+PRIVILEGED_DATA static volatile uint32_t ulPRIMASKBeforeCritical = 0;
+
 #if ( configUSE_TICKLESS_IDLE == 1 )
 
     /**
@@ -789,7 +796,16 @@ void vPortYield( void ) /* PRIVILEGED_FUNCTION */
 
 void vPortEnterCritical( void ) /* PRIVILEGED_FUNCTION */
 {
+    uint32_t ulPRIMASK;
+
+    __asm volatile ( "mrs %0, primask" : "=r" ( ulPRIMASK )::"memory" );
     portDISABLE_INTERRUPTS();
+
+    if( ulCriticalNesting == 0 )
+    {
+        ulPRIMASKBeforeCritical = ulPRIMASK;
+    }
+
     ulCriticalNesting++;
 
     /* Barriers are normally not required but do ensure the code is
@@ -807,10 +823,36 @@ void vPortExitCritical( void ) /* PRIVILEGED_FUNCTION */
 
     if( ulCriticalNesting == 0 )
     {
-        portENABLE_INTERRUPTS();
+        __asm volatile ( "msr primask, %0" ::"r" ( ulPRIMASKBeforeCritical ) : "memory" );
     }
 }
 
+/*-----------------------------------------------------------*/
+
+BaseType_t xPortTaskCanBlock( UBaseType_t uxKernelNesting ) /* PRIVILEGED_FUNCTION */
+{
+    BaseType_t xReturn = pdFALSE;
+    uint32_t ulPRIMASK;
+
+    /* A critical section of the task's own prevents the context switch as well.
+     * Before the scheduler starts, the nesting count is not initialised and
+     * does not match either. */
+    if( ulCriticalNesting == uxKernelNesting )
+    {
+        __asm volatile ( "mrs %0, primask" : "=r" ( ulPRIMASK )::"memory" );
+
+        /* Inside the kernel's critical section, the mask that counts is the
+         * one the task held before it. */
+        if( uxKernelNesting != 0 )
+        {
+            ulPRIMASK = ulPRIMASKBeforeCritical;
+        }
+
+        xReturn = ( ulPRIMASK == 0 ) ? pdTRUE : pdFALSE;
+    }
+
+    return xReturn;
+}
 /*-----------------------------------------------------------*/
 
 void SysTick_Handler( void ) /* PRIVILEGED_FUNCTION */

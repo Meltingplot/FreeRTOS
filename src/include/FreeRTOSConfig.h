@@ -436,6 +436,26 @@ extern configRUN_TIME_COUNTER_TYPE TaskResetRunTimeCounter(void) noexcept;
 extern void vAssertCalled( uint32_t ulLine, const char *pcFile ) noexcept __attribute__((noreturn));
 #define configASSERT( x ) if( ( x ) == 0 ) vAssertCalled( __LINE__, __FILE__ )
 
+/* A task must not block while it holds an interrupt mask of its own (BASEPRI or
+ * PRIMASK set outside the FreeRTOS critical sections) or a critical section of
+ * its own: the context switch runs at the lowest interrupt priority, so it cannot
+ * run then, and the task would carry on although it is no longer ready. The
+ * critical sections of the ports restore such a mask on exit instead of clearing
+ * it, so these hooks turn a block under a mask into an assertion. The argument of
+ * xPortTaskCanBlock() is the number of critical sections that the kernel holds
+ * itself at the hook: none where a task blocks, one in vTaskSuspend() and
+ * vTaskDelete(). traceTASK_DELAY_UNTIL also covers
+ * vTaskPlaceOnEventListRestricted(). Each port that RRF uses provides
+ * xPortTaskCanBlock(). */
+#define traceENTER_vTaskPlaceOnEventList( pxEventList, xTicksToWait )						configASSERT( xPortTaskCanBlock( 0 ) )
+#define traceENTER_vTaskPlaceOnUnorderedEventList( pxEventList, xItemValue, xTicksToWait )	configASSERT( xPortTaskCanBlock( 0 ) )
+#define traceTASK_DELAY()																	configASSERT( xPortTaskCanBlock( 0 ) )
+#define traceTASK_DELAY_UNTIL( xTimeToWake )												configASSERT( xPortTaskCanBlock( 0 ) )
+#define traceTASK_NOTIFY_TAKE_BLOCK( uxIndexToWait )										configASSERT( xPortTaskCanBlock( 0 ) )
+#define traceTASK_NOTIFY_WAIT_BLOCK( uxIndexToWait )										configASSERT( xPortTaskCanBlock( 0 ) )
+#define traceTASK_SUSPEND( pxTaskToSuspend )												configASSERT( ( pxTaskToSuspend ) != pxCurrentTCB || xSchedulerRunning == pdFALSE || xPortTaskCanBlock( 1 ) )
+#define traceTASK_DELETE( pxTaskToDelete )													configASSERT( ( pxTaskToDelete ) != pxCurrentTCB || xSchedulerRunning == pdFALSE || xPortTaskCanBlock( 1 ) )
+
 /******************************************************************************/
 /* FreeRTOS MPU specific definitions. *****************************************/
 /******************************************************************************/

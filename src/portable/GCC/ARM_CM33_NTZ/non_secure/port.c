@@ -552,6 +552,14 @@ portDONT_DISCARD void vPortSVCHandler_C( uint32_t * pulCallerStackAddress ) PRIV
  */
 PRIVILEGED_DATA static volatile uint32_t ulCriticalNesting = 0xaaaaaaaaUL;
 
+/**
+ * @brief The BASEPRI that the outermost critical section found when it was
+ * entered. Its exit restores this value instead of clearing BASEPRI, so a
+ * caller that masked interrupts itself still has its mask when the critical
+ * section ends.
+ */
+PRIVILEGED_DATA static volatile uint32_t ulBASEPRIBeforeCritical = 0UL;
+
 #if ( configENABLE_TRUSTZONE == 1 )
 
     /**
@@ -1019,7 +1027,13 @@ void vPortYield( void ) /* PRIVILEGED_FUNCTION */
 
 void vPortEnterCritical( void ) /* PRIVILEGED_FUNCTION */
 {
-    portDISABLE_INTERRUPTS();
+    const uint32_t ulOriginalBASEPRI = portDISABLE_INTERRUPTS();
+
+    if( ulCriticalNesting == 0UL )
+    {
+        ulBASEPRIBeforeCritical = ulOriginalBASEPRI;
+    }
+
     ulCriticalNesting++;
 
     /* Barriers are normally not required but do ensure the code is
@@ -1036,8 +1050,35 @@ void vPortExitCritical( void ) /* PRIVILEGED_FUNCTION */
 
     if( ulCriticalNesting == 0 )
     {
-        portENABLE_INTERRUPTS();
+        vClearInterruptMask( ulBASEPRIBeforeCritical );
     }
+}
+/*-----------------------------------------------------------*/
+
+BaseType_t xPortTaskCanBlock( UBaseType_t uxKernelNesting ) /* PRIVILEGED_FUNCTION */
+{
+    BaseType_t xReturn = pdFALSE;
+    uint32_t ulBASEPRI, ulPRIMASK;
+
+    /* A critical section of the task's own prevents the context switch as well.
+     * Before the scheduler starts, the nesting count is not initialised and
+     * does not match either. */
+    if( ulCriticalNesting == uxKernelNesting )
+    {
+        __asm volatile ( "mrs %0, basepri" : "=r" ( ulBASEPRI )::"memory" );
+        __asm volatile ( "mrs %0, primask" : "=r" ( ulPRIMASK )::"memory" );
+
+        /* Inside the kernel's critical section, the mask that counts is the
+         * one the task held before it. */
+        if( uxKernelNesting != 0 )
+        {
+            ulBASEPRI = ulBASEPRIBeforeCritical;
+        }
+
+        xReturn = ( ( ulBASEPRI == 0 ) && ( ulPRIMASK == 0 ) ) ? pdTRUE : pdFALSE;
+    }
+
+    return xReturn;
 }
 /*-----------------------------------------------------------*/
 
