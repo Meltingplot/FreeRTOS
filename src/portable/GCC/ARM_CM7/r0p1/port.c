@@ -154,6 +154,11 @@ static void prvTaskExitError( void );
  * variable. */
 static UBaseType_t uxCriticalNesting = 0xaaaaaaaa;
 
+/* The BASEPRI that the outermost critical section found when it was entered.
+ * Its exit restores this value instead of clearing BASEPRI, so a caller that
+ * masked interrupts itself still has its mask when the critical section ends. */
+static uint32_t ulBASEPRIBeforeCritical = 0;
+
 /*
  * The number of SysTick increments that make up one tick period.
  */
@@ -462,7 +467,13 @@ void vPortEndScheduler( void )
 
 void vPortEnterCritical( void )
 {
-    portDISABLE_INTERRUPTS();
+    const uint32_t ulOriginalBASEPRI = ulPortRaiseBASEPRI();
+
+    if( uxCriticalNesting == 0 )
+    {
+        ulBASEPRIBeforeCritical = ulOriginalBASEPRI;
+    }
+
     uxCriticalNesting++;
 
     /* This is not the interrupt safe version of the enter critical function so
@@ -484,8 +495,35 @@ void vPortExitCritical( void )
 
     if( uxCriticalNesting == 0 )
     {
-        portENABLE_INTERRUPTS();
+        vPortSetBASEPRI( ulBASEPRIBeforeCritical );
     }
+}
+/*-----------------------------------------------------------*/
+
+BaseType_t xPortTaskCanBlock( UBaseType_t uxKernelNesting )
+{
+    BaseType_t xReturn = pdFALSE;
+    uint32_t ulBASEPRI, ulPRIMASK;
+
+    /* A critical section of the task's own prevents the context switch as well.
+     * Before the scheduler starts, the nesting count is not initialised and
+     * does not match either. */
+    if( uxCriticalNesting == uxKernelNesting )
+    {
+        __asm volatile ( "mrs %0, basepri" : "=r" ( ulBASEPRI )::"memory" );
+        __asm volatile ( "mrs %0, primask" : "=r" ( ulPRIMASK )::"memory" );
+
+        /* Inside the kernel's critical section, the mask that counts is the
+         * one the task held before it. */
+        if( uxKernelNesting != 0 )
+        {
+            ulBASEPRI = ulBASEPRIBeforeCritical;
+        }
+
+        xReturn = ( ( ulBASEPRI == 0 ) && ( ulPRIMASK == 0 ) ) ? pdTRUE : pdFALSE;
+    }
+
+    return xReturn;
 }
 /*-----------------------------------------------------------*/
 

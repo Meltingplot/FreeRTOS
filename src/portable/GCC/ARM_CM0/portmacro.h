@@ -106,6 +106,12 @@ extern void vPortYield( void ) /* PRIVILEGED_FUNCTION */;
 extern void vPortEnterCritical( void ) /* PRIVILEGED_FUNCTION */;
 extern void vPortExitCritical( void ) /* PRIVILEGED_FUNCTION */;
 
+/* pdTRUE if the calling task can block: it holds no FreeRTOS critical section
+ * other than the uxKernelNesting ones of the kernel function that asks, and no
+ * interrupt mask of its own. While it holds either, the context switch cannot
+ * run. */
+extern BaseType_t xPortTaskCanBlock( UBaseType_t uxKernelNesting ) /* PRIVILEGED_FUNCTION */;
+
 extern uint32_t ulSetInterruptMask( void ) /* __attribute__(( naked )) PRIVILEGED_FUNCTION */;
 extern void vClearInterruptMask( uint32_t ulMask ) /* __attribute__(( naked )) PRIVILEGED_FUNCTION */;
 

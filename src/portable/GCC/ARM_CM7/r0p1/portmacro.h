@@ -114,6 +114,12 @@ typedef unsigned long    UBaseType_t;
 /* Critical section management. */
 extern void vPortEnterCritical( void );
 extern void vPortExitCritical( void );
+
+/* pdTRUE if the calling task can block: it holds no FreeRTOS critical section
+ * other than the uxKernelNesting ones of the kernel function that asks, and no
+ * interrupt mask of its own. While it holds either, the context switch cannot
+ * run. */
+extern BaseType_t xPortTaskCanBlock( UBaseType_t uxKernelNesting );
 #define portSET_INTERRUPT_MASK_FROM_ISR()         ulPortRaiseBASEPRI()
 #define portCLEAR_INTERRUPT_MASK_FROM_ISR( x )    vPortSetBASEPRI( x )
 #define portDISABLE_INTERRUPTS()                  vPortRaiseBASEPRI()
@@ -225,20 +231,25 @@ portFORCE_INLINE static void vPortRaiseBASEPRI( void )
 
 /*-----------------------------------------------------------*/
 
+/* Raise BASEPRI to the system call level and return its value before. A
+ * stricter mask that is in force already stays (basepri_max never lowers it).
+ * The errata workaround disables the interrupts around the write and then
+ * restores PRIMASK, so that a caller who had them disabled keeps them disabled. */
 portFORCE_INLINE static uint32_t ulPortRaiseBASEPRI( void )
 {
-    uint32_t ulOriginalBASEPRI, ulNewBASEPRI;
+    uint32_t ulOriginalBASEPRI, ulNewBASEPRI, ulOriginalPRIMASK;
 
     __asm volatile
     (
         "   mrs %0, basepri                                         \n" \
-        "   mov %1, %2                                              \n" \
+        "   mrs %2, primask                                         \n" \
+        "   mov %1, %3                                              \n" \
         "   cpsid i                                                 \n" \
-        "   msr basepri, %1                                         \n" \
+        "   msr basepri_max, %1                                     \n" \
         "   isb                                                     \n" \
         "   dsb                                                     \n" \
-        "   cpsie i                                                 \n" \
-        : "=r" ( ulOriginalBASEPRI ), "=r" ( ulNewBASEPRI ) : "i" ( configMAX_SYSCALL_INTERRUPT_PRIORITY ) : "memory"
+        "   msr primask, %2                                         \n" \
+        : "=&r" ( ulOriginalBASEPRI ), "=&r" ( ulNewBASEPRI ), "=&r" ( ulOriginalPRIMASK ) : "i" ( configMAX_SYSCALL_INTERRUPT_PRIORITY ) : "memory"
     );
 
     /* This return will not be reached but is necessary to prevent compiler

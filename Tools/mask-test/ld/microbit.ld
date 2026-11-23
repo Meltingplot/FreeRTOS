@@ -1,0 +1,7 @@
+/* QEMU microbit (nRF51822): 256 KiB flash at 0x00000000, 16 KiB SRAM at 0x20000000. */
+MEMORY
+{
+    FLASH (rx)  : ORIGIN = 0x00000000, LENGTH = 256K
+    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 16K
+}
+INCLUDE common.ld
